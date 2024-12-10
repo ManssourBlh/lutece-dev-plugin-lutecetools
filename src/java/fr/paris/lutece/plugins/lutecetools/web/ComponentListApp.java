@@ -38,6 +38,7 @@ import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 import javax.servlet.http.HttpServletRequest;
 
@@ -69,6 +70,10 @@ public class ComponentListApp extends MVCApplication
     private static final String MARK_GITHUB_FILTER = "github_filter";
     private static final String MARK_GITLAB_FILTER = "gitlab_filter";
     private static final String MARK_DISPLAY_CORE_VERSIONS = "core_versions";
+    private static final String MARK_MIN_RCI = "min_rci";
+    private static final String MARK_MAX_RCI = "max_rci";
+    private static final String MARK_MIN_LINES = "min_lines";
+    private static final String MARK_MAX_LINES = "max_lines";
     private static final String MARK_LOGS = "logs";
     private static final String MARK_INTEGER_SUCCESS = "rci_color_success";
     private static final String MARK_INTEGER_WARNING = "rci_color_warning";
@@ -85,6 +90,10 @@ public class ComponentListApp extends MVCApplication
     private static final String PARAMETER_GITHUB = "github";
     private static final String PARAMETER_GITLAB = "gitlab";
     private static final String PARAMETER_CORE_VERSIONS = "core";
+    private static final String PARAMETER_MIN_LINES = "min_lines";
+    private static final String PARAMETER_MAX_LINES = "max_lines";
+    private static final String PARAMETER_MIN_RCI = "min_rci";
+    private static final String PARAMETER_MAX_RCI = "max_rci";
     private static final String PARAMETER_ARTIFACT_ID = "artifact_id";
     private static final String PARAMETER_REFRESH = "refresh";
 
@@ -103,7 +112,7 @@ public class ComponentListApp extends MVCApplication
      * Returns the content of the page lutecetools.
      *
      * @param request
-     *            The HTTP request
+     *         The HTTP request
      * @return The view
      */
     @View( value = VIEW_HOME, defaultView = true )
@@ -113,6 +122,17 @@ public class ComponentListApp extends MVCApplication
         String strGitHubFilter = request.getParameter( PARAMETER_GITHUB );
         String strGitLabFilter = request.getParameter( PARAMETER_GITLAB );
         String strDisplayCoreVersions = request.getParameter( PARAMETER_CORE_VERSIONS );
+
+        String strMinLines = request.getParameter( PARAMETER_MIN_LINES );
+        String strMaxLines = request.getParameter( PARAMETER_MAX_LINES );
+        String strMinRci = request.getParameter( PARAMETER_MIN_RCI );
+        String strMaxRci = request.getParameter( PARAMETER_MAX_RCI );
+
+        Integer minLines = ( strMinLines != null && Integer.parseInt( strMinLines ) >= 0 ) ? Integer.parseInt( strMinLines ) : null;
+        Integer maxLines = ( strMaxLines != null && Integer.parseInt( strMaxLines ) >= 0 ) ? Integer.parseInt( strMaxLines ) : null;
+        Integer minRci = ( strMinRci != null && Integer.parseInt( strMinRci ) >= 0 ) ? Integer.parseInt( strMinRci ) : null;
+        Integer maxRci = ( strMaxRci != null && Integer.parseInt( strMaxRci ) >= 0 ) ? Integer.parseInt( strMaxRci ) : null;
+
         boolean bDisplayCoreVersions = ( strDisplayCoreVersions != null ) && strDisplayCoreVersions.equals( VALUE_ON );
         if ( VALUE_ON.equals( strGitHubFilter ) )
         {
@@ -122,6 +142,7 @@ public class ComponentListApp extends MVCApplication
         {
             listFilterPlatform.add( PLATFORM_GITLAB );
         }
+
         Integer nTotal = 0;
         int nTotalPRs = 0;
         long oldestPR = Long.MAX_VALUE;
@@ -134,6 +155,9 @@ public class ComponentListApp extends MVCApplication
         {
             ciInfos.setListComponents( filterPlatform( ciInfos.getListComponents( ), listFilterPlatform ) );
         }
+
+        ciInfos.setListComponents( filterBySonarMetrics( ciInfos.getListComponents( ), SonarService.SONAR_NB_LINES, minLines, maxLines ) );
+        ciInfos.setListComponents( filterBySonarMetrics( ciInfos.getListComponents( ), SonarService.SONAR_RCI, minRci, maxRci ) );
 
         // FIXME
         for ( Component c : ciInfos.getListComponents( ) )
@@ -165,6 +189,10 @@ public class ComponentListApp extends MVCApplication
         model.put( MARK_GITHUB_FILTER, listFilterPlatform.contains( PLATFORM_GITHUB ) );
         model.put( MARK_GITLAB_FILTER, listFilterPlatform.contains( PLATFORM_GITLAB ) );
         model.put( MARK_DISPLAY_CORE_VERSIONS, bDisplayCoreVersions );
+        model.put( MARK_MIN_RCI, minRci );
+        model.put( MARK_MAX_RCI, maxRci );
+        model.put( MARK_MIN_LINES, minLines );
+        model.put( MARK_MAX_LINES, maxLines );
         model.put( MARK_LOGS, MavenRepoService.instance( ).getLogs( ) );
 
         return getXPage( TEMPLATE_XPAGE, request.getLocale( ), model );
@@ -174,7 +202,7 @@ public class ComponentListApp extends MVCApplication
      * Returns the content of the page lutecetools.
      *
      * @param request
-     *            The HTTP request
+     *         The HTTP request
      * @return The view
      */
     @View( value = VIEW_DETAIL )
@@ -223,7 +251,7 @@ public class ComponentListApp extends MVCApplication
      * Refresh action processing
      *
      * @param request
-     *            The HTTP request
+     *         The HTTP request
      * @return The page
      */
     @Action( ACTION_REFRESH )
@@ -236,7 +264,7 @@ public class ComponentListApp extends MVCApplication
      * Clear Cache action processing
      *
      * @param request
-     *            The HTTP request
+     *         The HTTP request
      * @return The page
      */
     @Action( ACTION_CLEAR_CACHE )
@@ -252,7 +280,7 @@ public class ComponentListApp extends MVCApplication
      * Filter a list of component to keep only github hosted ones
      *
      * @param listComponents
-     *            The list to filter
+     *         The list to filter
      * @return The filtered list
      */
     private List<Component> filterPlatform( List<Component> listComponents, List<String> listPlatform )
@@ -275,7 +303,7 @@ public class ComponentListApp extends MVCApplication
      * Get the parameters send with the action to resend to the view
      *
      * @param request
-     *            The HTTP Request
+     *         The HTTP Request
      * @return The parameters
      */
     private Map<String, String> getViewParameters( HttpServletRequest request )
@@ -284,6 +312,10 @@ public class ComponentListApp extends MVCApplication
         String strGitHubFilter = request.getParameter( PARAMETER_GITHUB );
         String strGitLabFilter = request.getParameter( PARAMETER_GITLAB );
         String strDisplayCoreVersions = request.getParameter( PARAMETER_CORE_VERSIONS );
+        String strMinLines = request.getParameter( PARAMETER_MIN_LINES );
+        String strMaxLines = request.getParameter( PARAMETER_MAX_LINES );
+        String strMinRci = request.getParameter( PARAMETER_MIN_RCI );
+        String strMaxRci = request.getParameter( PARAMETER_MAX_RCI );
 
         if ( ( strGitHubFilter != null ) && ( strGitHubFilter.equals( VALUE_ON ) ) )
         {
@@ -299,7 +331,69 @@ public class ComponentListApp extends MVCApplication
             mapParameters.put( PARAMETER_CORE_VERSIONS, VALUE_ON );
         }
 
+        if ( strMinLines != null && !strMinLines.isEmpty( ) )
+        {
+            mapParameters.put( PARAMETER_MIN_LINES, strMinLines );
+        }
+        if ( strMaxLines != null && !strMaxLines.isEmpty( ) )
+        {
+            mapParameters.put( PARAMETER_MAX_LINES, strMaxLines );
+        }
+        if ( strMinRci != null && !strMinRci.isEmpty( ) )
+        {
+            mapParameters.put( PARAMETER_MIN_RCI, strMinRci );
+        }
+        if ( strMaxRci != null && !strMaxRci.isEmpty( ) )
+        {
+            mapParameters.put( PARAMETER_MAX_RCI, strMaxRci );
+        }
+
         return mapParameters;
+    }
+
+    /**
+     * Filter a list of component to keep only components with a sonar metric value between lowerThreshold and upperThreshold
+     *
+     * @param components
+     *         The list to filter
+     * @param strMetricKey
+     *         The metric key
+     * @param nLowerThreshold
+     *         The lower threshold
+     * @param nUpperThreshold
+     *         The upper threshold
+     * @return The filtered list
+     */
+    private List<Component> filterBySonarMetrics( List<Component> components, String strMetricKey, Integer nLowerThreshold, Integer nUpperThreshold )
+    {
+        int nLower = ( nLowerThreshold != null ) ? nLowerThreshold : 0;
+        int nUpper = ( nUpperThreshold != null ) ? nUpperThreshold : Integer.MAX_VALUE;
+
+        return components.stream( ).filter( component -> {
+            String strMetricValue = component.get( strMetricKey );
+            if ( strMetricValue != null )
+            {
+                try
+                {
+                    if ( strMetricKey.equals( SonarService.SONAR_RCI ) && strMetricValue.endsWith( "%" ) )
+                    {
+                        int metricValue = Integer.parseInt( strMetricValue.replace( "%", "" ).trim( ) );
+                        return metricValue >= nLower && metricValue <= nLower;
+                    }
+                    else
+                    {
+                        // For other metrics (like nb lines)
+                        int metricValue = Integer.parseInt( strMetricValue );
+                        return metricValue >= nUpper && metricValue <= nUpper;
+                    }
+                }
+                catch( NumberFormatException e )
+                {
+                    return false;
+                }
+            }
+            return false;
+        } ).collect( Collectors.toList( ) );
     }
 
 }
